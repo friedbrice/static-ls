@@ -1,7 +1,7 @@
 spec-version: 0.30.0
 name: static-ls
 author: Joseph Sumabat
-synopsis: See README on Github for more information 
+synopsis: See README on Github for more information
 description: static-ls ("static language server") reads static project
   information to provide IDE functionality through the language server
   protocol. static-ls will not generate this information on its own and instead
@@ -15,7 +15,7 @@ build-type: Simple
 extra-doc-files:
   - README.md
   - CHANGELOG.md
-tested-with: 
+tested-with:
   - GHC == 9.4.4
   - GHC == 9.6.3
 
@@ -35,6 +35,7 @@ dependencies:
   - lsp-types >= 2.1 && < 2.2
   - mtl >= 2.2.2 && < 2.4
   - parsec >= 3.1.0 && < 3.2
+  - regex-tdfa >= 1.3.2 && < 1.4
   - sqlite-simple >= 0.4.18 && < 0.5
   - template-haskell >= 2.19.0 && < 2.21
   - text >= 2.0.1 && < 2.1
@@ -42,13 +43,14 @@ dependencies:
   - unliftio-core >= 0.2.1 && < 0.3
 
 default-extensions:
-- ExplicitNamespaces
-- FlexibleContexts
-- OverloadedRecordDot
-- OverloadedStrings
-- NoFieldSelectors
-- LambdaCase
-- RecordWildCards
+  - ExplicitNamespaces
+  - FlexibleContexts
+  - OverloadedRecordDot
+  - OverloadedStrings
+  - NoFieldSelectors
+  - LambdaCase
+  - RecordWildCards
+  - TypeOperators
 
 ghc-options:
   - -Wall
@@ -56,23 +58,23 @@ ghc-options:
 library:
   source-dirs: src
   ghc-options:
-  - -fwrite-ide-info
-  - -hiedir test/TestData/.hiefiles
-  - -haddock
+    - -fwrite-ide-info
+    - -hiedir test/TestData/.hiefiles
+    - -haddock
 
 executable:
   source-dirs: app
   main: Main.hs
   dependencies:
-  - static-ls
-  - optparse-applicative >= 0.17.0.0 && < 0.19
+    - static-ls
+    - optparse-applicative >= 0.17.0.0 && < 0.19
   generated-other-modules:
     - Paths_static_ls
 
 tests:
   static-ls-test:
     dependencies:
-    - static-ls
+      - static-ls
     defaults: hspec/hspec@main
     ghc-options:
       - -fwrite-ide-info
@@ -89,11 +91,17 @@ flags:
 
 when:
   - condition: flag(dev)
+    dependencies:
+      - aeson
+      - bytestring
+      - hspec
     ghc-options:
-    - -fwrite-ide-info
-    - -hiedir .hiefiles
-    - -hidir .hifiles
-    - -fdefer-type-errors
-    - -fno-defer-typed-holes
-    - -Werror=deferred-type-errors
-    - -Werror=deferred-out-of-scope-variables
+      - -fwrite-ide-info
+      - -hiedir .hiefiles
+      - -fwrite-interface
+      - -hidir .hifiles
+      - -fhelpful-errors
+      - -fdefer-type-errors
+      - -fno-defer-typed-holes
+      - -Werror=deferred-type-errors
+      - -Werror=deferred-out-of-scope-variables

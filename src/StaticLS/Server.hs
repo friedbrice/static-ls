@@ -8,8 +8,7 @@ module StaticLS.Server (
 
 --- Standard imports
 
-import Control.Monad.IO.Class (liftIO)
-import Control.Monad.Trans.Class
+import Control.Monad.Reader
 import Control.Monad.Trans.Except
 
 --- Uncommon 3rd-party imports
@@ -22,12 +21,13 @@ import Language.LSP.Server (
     type (<~>) (Iso),
  )
 
-import Language.LSP.Protocol.Message (Method (..), ResponseError (..), SMethod (..), TMessage, TRequestMessage (..))
+import Language.LSP.Protocol.Message
 import Language.LSP.Protocol.Types
 import qualified Language.LSP.Server as LSP
 
 ---- Local imports
 
+import StaticLS.IDE.CodeActions
 import StaticLS.IDE.Definition
 import StaticLS.IDE.Hover
 import StaticLS.IDE.References
@@ -95,6 +95,12 @@ handleWorkspaceSymbol = LSP.requestHandler SMethod_WorkspaceSymbol $ \req res ->
 handleSetTrace :: Handlers (LspT c StaticLs)
 handleSetTrace = LSP.notificationHandler SMethod_SetTrace $ \_ -> pure ()
 
+handleCodeActionsRequest :: Handlers (LspT c StaticLs)
+handleCodeActionsRequest = LSP.requestHandler SMethod_TextDocumentCodeAction $ \req res -> do
+    let codeActionParams = req._params
+    actions <- lift $ getCodeActions codeActionParams._textDocument codeActionParams._range codeActionParams._context
+    res $ Right . InL $ actions
+
 -----------------------------------------------------------------
 ----------------------- Server definition -----------------------
 -----------------------------------------------------------------
@@ -145,9 +151,21 @@ serverDef argOptions =
                 , handleDidSave
                 , handleWorkspaceSymbol
                 , handleSetTrace
+                , handleCodeActionsRequest
                 ]
         , interpretHandler = \env -> Iso (runStaticLs env.staticEnv . LSP.runLspT env.config) liftIO
-        , options = LSP.defaultOptions
+        , options =
+            LSP.defaultOptions
+                { LSP.optTextDocumentSync =
+                    Just
+                        TextDocumentSyncOptions
+                            { _openClose = Just True
+                            , _change = Just TextDocumentSyncKind_Full
+                            , _willSave = Nothing
+                            , _willSaveWaitUntil = Nothing
+                            , _save = Nothing
+                            }
+                }
         , defaultConfig = ()
         }
 

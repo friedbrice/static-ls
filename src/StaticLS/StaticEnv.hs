@@ -1,6 +1,5 @@
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-
 module StaticLS.StaticEnv (
     initStaticEnv,
     runStaticLs,
