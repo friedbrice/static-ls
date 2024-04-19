@@ -91,6 +91,9 @@ flags:
 
 when:
   - condition: flag(dev)
+    default-extensions:
+      - EmptyCase
+      - PartialTypeSignatures
     dependencies:
       - aeson
       - bytestring

@@ -1,6 +1,6 @@
--- module StaticLS.IDE.CodeActions (getCodeActions) where
-module StaticLS.IDE.CodeActions where
+module StaticLS.IDE.CodeActions (getCodeActions) where
 
+import Control.Applicative
 import Control.Monad
 import Control.Monad.Reader
 import Control.Monad.Trans.Maybe
@@ -24,19 +24,27 @@ instance Eq (Hidden a) where (==) _ _ = True
 instance Ord (Hidden a) where compare _ _ = EQ
 
 getCodeActions :: (MonadReader StaticEnv m, MonadIO m) => TextDocumentIdentifier -> Range -> CodeActionContext -> m [Command |? CodeAction]
-getCodeActions tdi rng ctx = do
+getCodeActions tdi _rng ctx = do
     let issues = S.fromList (mapMaybe actionableIssue ctx._diagnostics)
-    actions <- join <$> traverse (codeActions tdi rng) (S.toList issues)
+    actions <- join <$> traverse (codeActions tdi) (S.toList issues)
     pure $ map InR actions
 
 data ActionableIssue
     = RequiredExtension (Hidden Diagnostic) KnownExtension
     | TypedHoleFits (Hidden Diagnostic) [T.Text]
     | OutOfScope (Hidden Diagnostic) T.Text [T.Text]
+    | MissingFields (Hidden Diagnostic) T.Text (Maybe T.Text) [T.Text]
+    | MissingMethods (Hidden Diagnostic) [T.Text]
+    | MissingAssociatedType (Hidden Diagnostic) T.Text
+    | MissingCasses (Hidden Diagnostic) [T.Text]
     deriving (Eq, Ord, Show)
 
-codeActions :: (MonadReader StaticEnv m, MonadIO m) => TextDocumentIdentifier -> Range -> ActionableIssue -> m [CodeAction]
-codeActions tdi0 _rng iss = case iss of
+codeActions :: (MonadReader StaticEnv m, MonadIO m) => TextDocumentIdentifier -> ActionableIssue -> m [CodeAction]
+codeActions tdi0 iss = case iss of
+    MissingMethods (Hidden diag) methods -> pure [insertMissingMethods tdi0 diag methods]
+    MissingAssociatedType (Hidden diag) ty -> pure [insertAssociatedType tdi0 diag ty]
+    MissingFields (Hidden diag) ctor ext flds -> pure [insertFields tdi0 diag ctor ext flds]
+    MissingCasses (Hidden diag) pats -> pure [insertCases tdi0 diag pats]
     RequiredExtension (Hidden diag) ext -> pure [addRequiredExtension tdi0 diag ext]
     TypedHoleFits (Hidden diag) fits -> pure $ useValidHoleFit tdi0 diag <$> fits
     OutOfScope (Hidden diag) var suggestions -> do
@@ -47,9 +55,44 @@ codeActions tdi0 _rng iss = case iss of
             similars = useSuggestion tdi0 diag <$> suggestions
         pure $ imports <> similars
   where
+    insertAssociatedType :: TextDocumentIdentifier -> Diagnostic -> T.Text -> CodeAction
+    insertAssociatedType tdi diag ty =
+        let rng = insertBelow diag._range
+            txt = T.concat ["    type ", ty, " = ()\n"]
+         in prefer $ quickFix tdi diag "Insert associated type." rng txt
+
+    insertMissingMethods :: TextDocumentIdentifier -> Diagnostic -> [T.Text] -> CodeAction
+    insertMissingMethods tdi diag methods =
+        let rng = insertBelow diag._range
+            txt = T.concat ["    ", T.intercalate " = _\n    " methods, "\n"]
+         in prefer $ quickFix tdi diag "Insert missing methods." rng txt
+
+    insertFields :: TextDocumentIdentifier -> Diagnostic -> T.Text -> Maybe T.Text -> [T.Text] -> CodeAction
+    insertFields tdi diag ctor existingFields missingFields =
+        let spaces = indentation diag._range
+            seps = "{ " : repeat ", "
+            formatNewField sep fld = T.concat [spaces, sep, fld, " = _"]
+            formatOldFields flds = T.concat [spaces, ", ", flds]
+            newFields = zipWith formatNewField seps missingFields
+            allFields = case existingFields of
+                Nothing -> newFields
+                Just flds -> newFields <> [formatOldFields flds]
+            renderedExpr = T.concat [ctor, "\n" <> T.unlines allFields <> spaces <> "}\n"]
+         in prefer $ quickFix tdi diag "Insert fields." (diag._range) renderedExpr
+
+    insertCases :: TextDocumentIdentifier -> Diagnostic -> [T.Text] -> CodeAction
+    insertCases tdi diag pats =
+        let spaces = indentation diag._range
+            rng = insertBelow diag._range
+            cases = foldMap (\pat -> spaces <> pat <> " -> _") pats
+         in prefer $ quickFix tdi diag "Insert cases." rng cases
+
     addRequiredExtension :: TextDocumentIdentifier -> Diagnostic -> KnownExtension -> CodeAction
     addRequiredExtension tdi diag (KnownExtension _ text) =
-        prefer $ quickFix tdi diag ("Add language extension: " <> text) (insertAt 0 0) (T.concat ["{-# LANGUAGE ", text, " #-}\n"])
+        let title = "Add language extension: " <> text
+            txt = T.concat ["{-# LANGUAGE ", text, " #-}\n"]
+            rng = insertAt 0 0
+         in prefer $ quickFix tdi diag title rng txt
 
     useValidHoleFit :: TextDocumentIdentifier -> Diagnostic -> T.Text -> CodeAction
     useValidHoleFit tdi diag sym = quickFix tdi diag ("Valid hole fit: " <> sym) (diag._range) sym
@@ -82,15 +125,20 @@ actionableIssue diag =
         , checkOutOfScope outOfScopeCtor
         , checkRequiredExtensions
         , checkValidHoleFits
+        , checkMissingFields
+        , checkMissingCases
+        , checkMissingMethods
+        , checkMissingAssociatedType
         ]
   where
     message :: NormalText
     message = normalize diag._message
 
     suggestions :: [T.Text]
-    suggestions = case perhapsUse message of
-        Just suggestion -> [getNormalText suggestion]
-        Nothing -> map getNormalText $ perhapsUseOneOf message
+    suggestions = do
+        sug <- toList (perhapsUse message)
+        sugs <- toList (perhapsUseOneOf message)
+        getNormalText sug : fmap getNormalText sugs
 
     checkOutOfScope :: (NormalText -> Maybe NormalText) -> Maybe ActionableIssue
     checkOutOfScope f = do
@@ -103,13 +151,31 @@ actionableIssue diag =
                 guard (T.isInfixOf text $ getNormalText message) $> RequiredExtension (Hidden diag) ext
          in asum $ map checkExt knownExtensions
 
+    checkMissingFields :: Maybe ActionableIssue
+    checkMissingFields = do
+        (ctor, ext, flds) <- requiredStrictFields message <|> fieldsNotInitialized message
+        Just $ MissingFields (Hidden diag) (getNormalText ctor) (fmap getNormalText ext) (map getNormalText flds)
+
+    checkMissingCases :: Maybe ActionableIssue
+    checkMissingCases = MissingCasses (Hidden diag) . map getNormalText <$> nonExhaustivePatterns message
+
     checkValidHoleFits :: Maybe ActionableIssue
-    checkValidHoleFits = case validHoleFits message of
-        [] -> Nothing
-        fits -> Just $ TypedHoleFits (Hidden diag) $ map getNormalText fits
+    checkValidHoleFits = TypedHoleFits (Hidden diag) . map getNormalText <$> validHoleFits message
+
+    checkMissingMethods :: Maybe ActionableIssue
+    checkMissingMethods = MissingMethods (Hidden diag) . map getNormalText <$> missingMethods message
+
+    checkMissingAssociatedType :: Maybe ActionableIssue
+    checkMissingAssociatedType = MissingAssociatedType (Hidden diag) . getNormalText <$> missingAssociatedType message
 
 insertAt :: UInt -> UInt -> Range
 insertAt line col = let p = Position line col in Range p p
+
+insertBelow :: Range -> Range
+insertBelow (Range start _) = insertAt (start._line + 1) 0
+
+indentation :: Range -> T.Text
+indentation (Range start _) = T.replicate (fromIntegral start._character + 4) " "
 
 prefer :: CodeAction -> CodeAction
 prefer action = action{_isPreferred = Just True}

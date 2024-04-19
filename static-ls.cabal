@@ -95,6 +95,9 @@ library
     , unliftio-core >=0.2.1 && <0.3
   default-language: Haskell2010
   if flag(dev)
+    default-extensions:
+        EmptyCase
+        PartialTypeSignatures
     ghc-options: -fwrite-ide-info -hiedir .hiefiles -fwrite-interface -hidir .hifiles -fhelpful-errors -fdefer-type-errors -fno-defer-typed-holes -Werror=deferred-type-errors -Werror=deferred-out-of-scope-variables
     build-depends:
         aeson
@@ -146,6 +149,9 @@ executable static-ls
     , unliftio-core >=0.2.1 && <0.3
   default-language: Haskell2010
   if flag(dev)
+    default-extensions:
+        EmptyCase
+        PartialTypeSignatures
     ghc-options: -fwrite-ide-info -hiedir .hiefiles -fwrite-interface -hidir .hifiles -fhelpful-errors -fdefer-type-errors -fno-defer-typed-holes -Werror=deferred-type-errors -Werror=deferred-out-of-scope-variables
     build-depends:
         aeson
@@ -210,6 +216,9 @@ test-suite static-ls-test
     , unliftio-core >=0.2.1 && <0.3
   default-language: Haskell2010
   if flag(dev)
+    default-extensions:
+        EmptyCase
+        PartialTypeSignatures
     ghc-options: -fwrite-ide-info -hiedir .hiefiles -fwrite-interface -hidir .hifiles -fhelpful-errors -fdefer-type-errors -fno-defer-typed-holes -Werror=deferred-type-errors -Werror=deferred-out-of-scope-variables
     build-depends:
         aeson

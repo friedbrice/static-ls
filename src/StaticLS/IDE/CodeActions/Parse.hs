@@ -10,7 +10,12 @@ module StaticLS.IDE.CodeActions.Parse (
     outOfScopeVar,
     perhapsUse,
     perhapsUseOneOf,
+    fieldsNotInitialized,
+    requiredStrictFields,
     validHoleFits,
+    missingMethods,
+    missingAssociatedType,
+    nonExhaustivePatterns,
 )
 where
 
@@ -38,12 +43,13 @@ captures pfx pat sfx (Normal text) = do
     [Normal cap]
 
 between :: T.Text -> T.Text -> NormalText -> Maybe NormalText
-between pfx sfx (Normal text) = do
+between pfx sfx text = do
     (_, _, afterPfx) <- cut pfx text
     (betweenPfxSfx, _, _) <- cut sfx afterPfx
-    pure $ Normal betweenPfxSfx
-  where
-    cut = flip (=~~) :: T.Text -> T.Text -> Maybe (T.Text, T.Text, T.Text)
+    pure betweenPfxSfx
+
+cut :: T.Text -> NormalText -> Maybe (NormalText, NormalText, NormalText)
+cut pat (Normal txt) = (\(x, y, z) -> (Normal x, Normal y, Normal z)) <$> txt =~~ pat
 
 ident :: T.Text
 ident = "[0-9A-Z'\\._a-z]+"
@@ -52,16 +58,45 @@ outOfScopeType :: NormalText -> Maybe NormalText
 outOfScopeType = capture "Not in scope: type constructor or class ‘" ident "’"
 
 outOfScopeCtor :: NormalText -> Maybe NormalText
-outOfScopeCtor = capture "Data constructor not in scope: " ident " :: "
+outOfScopeCtor = capture "Data constructor not in scope: " ident " ::"
 
 outOfScopeVar :: NormalText -> Maybe NormalText
-outOfScopeVar = capture "Variable not in scope: " ident " :: "
+outOfScopeVar = capture "Variable not in scope: " ident " ::"
 
 perhapsUse :: NormalText -> Maybe NormalText
 perhapsUse = capture "Perhaps use ‘" ident "’"
 
-perhapsUseOneOf :: NormalText -> [NormalText]
-perhapsUseOneOf = foldMap (captures "‘" ident "’") . between "Perhaps use one of these: " " \\| "
+perhapsUseOneOf :: NormalText -> Maybe [NormalText]
+perhapsUseOneOf = fmap (captures "‘" ident "’") . between "Perhaps use one of these:" "\\| "
 
-validHoleFits :: NormalText -> [NormalText]
-validHoleFits = foldMap (captures " " ident " :: ") . between "Valid hole fits include" " \\| "
+validHoleFits :: NormalText -> Maybe [NormalText]
+validHoleFits = fmap (captures " " ident " ::\\>") . between "Valid hole fits include" "\\| "
+
+missingMethods :: NormalText -> Maybe [NormalText]
+missingMethods = fmap (captures "‘" ident "’") . between "No explicit implementation for " " • In the instance declaration"
+
+missingAssociatedType :: NormalText -> Maybe NormalText
+missingAssociatedType = capture "No explicit associated type or default declaration for ‘" ident "’"
+
+nonExhaustivePatterns :: NormalText -> Maybe [NormalText]
+nonExhaustivePatterns = fmap (captures " " (ident <> "( _)*") " ") . between "not matched:" " \\| "
+
+fieldsNotInitialized :: NormalText -> Maybe (NormalText, Maybe NormalText, [NormalText])
+fieldsNotInitialized t1 = do
+    (_, _, t2) <- cut "Fields of ‘" t1
+    (constructor, _, t3) <- cut "’ not initialised: " t2
+    (fieldsSection, _, t4) <- cut " • In the expression: " t3
+    let missingFields = captures " " ident " :: " fieldsSection
+    braces <- between "\\{" "\\}" t4
+    let existingFields = if T.null (getNormalText braces) then Nothing else Just braces
+    pure ( constructor, existingFields, missingFields)
+
+requiredStrictFields :: NormalText -> Maybe (NormalText, Maybe NormalText, [NormalText])
+requiredStrictFields t1 = do
+    (_, _, t2) <- cut "Constructor ‘" t1
+    (constructor, _, t3) <- cut "’ does not have the required strict field\\(s\\):" t2
+    (fieldsSection, _, t4) <- cut "• In the expression:" t3
+    let missingFields = captures " " ident " ::" fieldsSection
+    braces <- between "\\{" "\\}" t4
+    let existingFields = if T.null (getNormalText braces) then Nothing else Just braces
+    pure ( constructor, existingFields, missingFields)

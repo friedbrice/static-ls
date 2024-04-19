@@ -25,5 +25,5 @@ lookupHieFileFromHie (getConn -> conn) fp = do
                     ++ intercalate ", " (map (show . toRow) xs)
 
 searchExports :: HieDb -> T.Text -> IO [ModuleName]
-searchExports (getConn -> conn) qry = do
+searchExports (getConn -> conn) qry =
     query conn "SELECT mods.mod FROM exports JOIN mods USING (hieFile) WHERE occ LIKE ?" (Only $ "%" <> qry <> "%")
