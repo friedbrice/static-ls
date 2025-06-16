@@ -110,7 +110,7 @@ data LspEnv config = LspEnv
     , config :: LanguageContextEnv config
     }
 
-initServer :: StaticEnvOptions -> LanguageContextEnv config -> TMessage 'Method_Initialize -> IO (Either ResponseError (LspEnv config))
+initServer :: StaticEnvOptions -> LanguageContextEnv config -> TMessage 'Method_Initialize -> IO (Either (TResponseError 'Method_Initialize) (LspEnv config))
 initServer staticEnvOptions serverConfig _ = do
     runExceptT $ do
         wsRoot <- ExceptT $ LSP.runLspT serverConfig getWsRoot
@@ -121,11 +121,11 @@ initServer staticEnvOptions serverConfig _ = do
                 , config = serverConfig
                 }
   where
-    getWsRoot :: LSP.LspM config (Either ResponseError FilePath)
+    getWsRoot :: LSP.LspM config (Either (TResponseError 'Method_Initialize) FilePath)
     getWsRoot = do
         mRootPath <- LSP.getRootPath
         pure $ case mRootPath of
-            Nothing -> Left $ ResponseError (InR ErrorCodes_InvalidRequest) "No root workspace was found" Nothing
+            Nothing -> Left $ TResponseError (InR ErrorCodes_InvalidRequest) "No root workspace was found" Nothing
             Just p -> Right p
 
 serverDef :: StaticEnvOptions -> ServerDefinition ()

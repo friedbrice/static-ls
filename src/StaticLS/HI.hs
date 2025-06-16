@@ -9,6 +9,7 @@ module StaticLS.HI (
 where
 
 import qualified Data.IntMap as IntMap
+import Data.Foldable (toList)
 import qualified Data.Map as Map
 import Data.Maybe
 import Data.Text as T
@@ -77,7 +78,7 @@ uniqNameMapToMap :: GHC.UniqMap GHC.Name v -> Map.Map String v
 uniqNameMapToMap =
     Map.fromList
         . fmap stringifyNameKeys
-        . IntMap.elems
+        . toList
         . GHC.ufmToIntMap
         . getUniqMap
   where
