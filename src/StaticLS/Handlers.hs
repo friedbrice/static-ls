@@ -29,6 +29,7 @@ import StaticLS.GhcidSession
 import StaticLS.HIE.File qualified as HIE.File
 import StaticLS.IDE.CodeActions (getCodeActions)
 import StaticLS.IDE.CodeActions qualified as IDE.CodeActions
+import StaticLS.IDE.CodeActions.Advanced (getAdvancedCodeActions)
 import StaticLS.IDE.CodeActions.Types qualified as IDE.CodeActions
 import StaticLS.IDE.Completion qualified as IDE.Completion
 import StaticLS.IDE.Definition
@@ -224,7 +225,8 @@ handleCodeAction = LSP.requestHandler LSP.SMethod_TextDocumentCodeAction $ \req 
   let lineCol = (ProtoLSP.lineColFromProto range._start)
   assists <- lift $ getCodeActions path lineCol
   codeActions <- lift $ traverse ProtoLSP.assistToCodeAction assists
-  res (Right (LSP.InL (fmap LSP.InR codeActions)))
+  advancedCodeActions <- lift $ getAdvancedCodeActions tdi range req._params._context
+  res $ Right $ LSP.InL $ fmap LSP.InR codeActions <> advancedCodeActions
   pure ()
 
 handleResolveCodeAction :: Handlers (LspT c StaticLsM)

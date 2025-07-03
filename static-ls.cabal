@@ -133,8 +133,10 @@ library
       StaticLS.IDE.AllExtensions
       StaticLS.IDE.CodeActions
       StaticLS.IDE.CodeActions.AddTypeSig
+      StaticLS.IDE.CodeActions.Advanced
       StaticLS.IDE.CodeActions.AutoExport
       StaticLS.IDE.CodeActions.AutoImport
+      StaticLS.IDE.CodeActions.Parse
       StaticLS.IDE.CodeActions.RemoveRedundantImports
       StaticLS.IDE.CodeActions.Types
       StaticLS.IDE.Completion

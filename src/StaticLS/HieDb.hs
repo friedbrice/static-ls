@@ -1,10 +1,12 @@
 {-# LANGUAGE ViewPatterns #-}
 
-module StaticLS.HieDb (lookupHieFileFromHie) where
+module StaticLS.HieDb (lookupHieFileFromHie, searchExports) where
 
 import Data.List (intercalate)
 import Database.SQLite.Simple
+import GHC.Plugins (ModuleName)
 import HieDb
+import qualified Data.Text as T
 
 -- | Lookup 'HieModule' row from 'HieDb' given the path to the Haskell hie file
 -- A temporary function until this is supported in hiedb proper
@@ -20,3 +22,7 @@ lookupHieFileFromHie (getConn -> conn) fp = do
           ++ show fp
           ++ ". Entries: "
           ++ intercalate ", " (map (show . toRow) xs)
+
+searchExports :: HieDb -> T.Text -> IO [ModuleName]
+searchExports (getConn -> conn) qry =
+    query conn "SELECT mods.mod FROM exports JOIN mods USING (hieFile) WHERE occ LIKE ?" (Only $ "%" <> qry <> "%")
